@@ -7,14 +7,17 @@
 
     Librerías:
     tkinter: Kit de herramientas GUI.
-    PIL: Procesamiento de imágenes directamente en python.
+    PIL: Procesamiento de imágenes directamente en tkinter.
+    imutils: Procesamiento de imágenes.
     mysql: Primitivas para trabajar con bases de datos.
     datetime: Obtener fecha y hora del ordenador.
     cv: Ejecutar modelos de reconocimiento de objetos.
+    re: Utilizar lenguaje natural para verificar cadenas.
 """
 import os
 import sys
 import hashlib
+import re
 
 import mysql.connector
 
@@ -77,6 +80,7 @@ class Main():
         self.rd_elegido = StringVar(value="Dona")
         self.id_usuario = None
         self.usuario_operador = StringVar()
+        self.caducidad = StringVar()    # Se agregó
         self.descripcion = StringVar()
         self.fecha = StringVar()
         self.hora_inicio = StringVar()
@@ -146,6 +150,7 @@ class Main():
         btn_ingresar.grid(row=5, column=0, padx=5, pady=10)
         btn_ingresar.configure(font=self.fuente_btn, background='green3', foreground='white')
 
+    # PRODUCCIÓN
     def validar_datos(self, usuario, contrasenia) -> None:
         """
             Función encargada de validar los datos de inicio de sesión con los datos
@@ -184,13 +189,53 @@ class Main():
                     self.id_usuario = registro[4]
                     self.ventana_seleccion()
             except mysql.connector.Error as err:
-                messagebox.showerror('BD', "No se encontró el usuario")
+                messagebox.showerror('BD', "Ocurrió un error al tratar de conectarse a la BD.")
                 print(err)
+                self.e_usuario.delete(0, END)
+                self.e_contrasenia.delete(0, END)
+            except IndexError as err:
+                messagebox.showerror('BD', "No se encontró el usuario.")
                 self.e_usuario.delete(0, END)
                 self.e_contrasenia.delete(0, END)
             finally:
                 cursor.close()
                 cnx.close()
+
+    # PRUEBAS
+    """
+    def validar_datos(self, usuario, contrasenia) -> None:
+        if usuario == "" or contrasenia == "":
+            messagebox.showerror('Formulario', "Debe llenar todos los campos, por favor.")
+            self.e_usuario.delete(0, END)
+            self.e_contrasenia.delete(0, END)
+        else:
+            operacion = ("SELECT * FROM usuarios WHERE usuario=%s AND contrasenia=%s")
+            parametros = (usuario, contrasenia)
+
+            try:
+                cnx = mysql.connector.connect(
+                    user='root',
+                    password='root',
+                    host='localhost',
+                    database='tt_prueba1'
+                )
+                cursor = cnx.cursor()
+                cursor.execute(operacion, parametros)
+                registro = cursor.fetchall()[0]
+                cnx.commit()
+
+                if registro:
+                    self.usuario_operador = usuario
+                    self.id_usuario = registro[0]
+                    self.ventana_seleccion()
+            except:
+                messagebox.showerror('BD', "No se encontró el usuario")
+                self.e_usuario.delete(0, END)
+                self.e_contrasenia.delete(0, END)
+            finally:
+                cursor.close()
+                cnx.close()
+    """
 
     def ventana_seleccion(self) -> None:
         """
@@ -263,7 +308,7 @@ class Main():
         self.frm_seleccion.pack_forget()
         self.frm_supervision.pack_forget()
 
-        self.raiz.geometry('580x310')
+        self.raiz.geometry('620x370')
 
         pza_pan = self.rd_elegido.get()
 
@@ -278,18 +323,25 @@ class Main():
         self.l_pieza.grid(row=1, column=0, sticky='w', padx=5, pady=5, columnspan=2)
         l_usuario = ttk.Label(self.frm_formulario, text=f'USUARIO OPERADOR: {self.usuario_operador}', font=self.fuente_label)
         l_usuario.grid(row=2, column=0, sticky='w', padx=5, pady=5, columnspan=2)
+
+        # SE AGREGO
+        l_caducidad = ttk.Label(self.frm_formulario, text="FECHA DE CADUCIDAD: (Escriba en formato YYYY-MM-DD)", font=self.fuente_label)
+        l_caducidad.grid(row=3, column=0, sticky="w", padx=5, pady=5, columnspan=2)
+        self.e_caducidad = ttk.Entry(self.frm_formulario, font=self.fuente_label)
+        self.e_caducidad.grid(row=4, column=0, sticky="w", padx=5, pady=5, columnspan=2)
+
         l_descripcion = ttk.Label(self.frm_formulario, text='DESCRIPCIÓN:', font=self.fuente_label)
-        l_descripcion.grid(row=3, column=0, sticky="w", padx=5, pady=5, columnspan=2)
+        l_descripcion.grid(row=5, column=0, sticky="w", padx=5, pady=5, columnspan=2)
 
         self.t_descripcion = Text(self.frm_formulario, width=60, height=5, font=self.fuente_label)
-        self.t_descripcion.grid(row=4, column=0, padx=5, pady=5, columnspan=2)
+        self.t_descripcion.grid(row=6, column=0, padx=5, pady=5, columnspan=2)
 
         btn_siguiente = Button(self.frm_formulario, text="Siguiente", command=lambda:self.procesar_formulario())
-        btn_siguiente.grid(row=5, column=0, padx=5, pady=5)
+        btn_siguiente.grid(row=7, column=0, padx=5, pady=5)
         btn_siguiente.configure(font=self.fuente_btn, background='green3', foreground='white')
 
         btn_regresar = Button(self.frm_formulario, text="Regresar", command=lambda:self.ventana_seleccion())
-        btn_regresar.grid(row=5, column=1, padx=5, pady=5)
+        btn_regresar.grid(row=7, column=1, padx=5, pady=5)
         btn_regresar.configure(font=self.fuente_btn, background='red', foreground='white')
 
     def procesar_formulario(self) -> None:
@@ -298,15 +350,17 @@ class Main():
             además de asignar datos referentes a la fecha y hora del conteo.
         """
 
+        patron = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+        
         self.descripcion = self.t_descripcion.get("1.0", "end-1c")
         
-        if self.descripcion == "":
-            messagebox.showerror("Formulario", "No se relleno el campo requerido.")
+        if self.descripcion == "" or self.caducidad == "" or not patron.match(self.e_caducidad.get()):
+            messagebox.showerror("Formulario", "No se rellenaron los campos requeridos o se rellenaron incorrectamente.")
         else:
             ahora = datetime.now()
             self.fecha = ahora.strftime("%Y-%m-%d")
             self.hora_inicio = ahora.strftime("%H:%M:%S")
-            print(self.hora_inicio)
+            self.caducidad = self.e_caducidad.get()
             self.ventana_supervision()
 
     def ventana_supervision(self) -> None:
@@ -477,7 +531,7 @@ class Main():
             Interfaz que muestra todos los datos asignados durante la operación.
         """
 
-        self.raiz.geometry('450x480')
+        self.raiz.geometry('450x500')
 
         self.frm_resumen.pack()
         self.frm_supervision.pack_forget()
@@ -494,30 +548,36 @@ class Main():
         l_usr.grid(row=2, column=0, sticky='w', padx=5, pady=5, columnspan=2)
         l_pza = ttk.Label(self.frm_resumen, text=f'PIEZA DE PAN: {self.rd_elegido.get()}', font=self.fuente_label)
         l_pza.grid(row=3, column=0, sticky='w', padx=5, pady=5, columnspan=2)
+
+        # SE AGREGO
+        l_caducidad = ttk.Label(self.frm_resumen, text=f'FECHA DE CADUCIDAD: {self.caducidad}', font=self.fuente_label)
+        l_caducidad.grid(row=4, column=0, sticky='w', padx=5, pady=5, columnspan=2)
+
         l_desc = ttk.Label(self.frm_resumen, text=f'DESCRIPCIÓN:', font=self.fuente_label)
-        l_desc.grid(row=4, column=0, sticky="w", padx=5, pady=5, columnspan=2)
+        l_desc.grid(row=5, column=0, sticky="w", padx=5, pady=5, columnspan=2)
 
         t_descripcion = Text(self.frm_resumen, width=40, height=5, bg="#F0F0F0", font=self.fuente_label)
-        t_descripcion.grid(row=5, column=0, padx=5, pady=5, columnspan=2)
+        t_descripcion.grid(row=6, column=0, padx=5, pady=5, columnspan=2)
         t_descripcion.insert(INSERT, self.descripcion)
         t_descripcion.config(state=DISABLED)
 
         l_fecha = ttk.Label(self.frm_resumen, text=f'FECHA DE OPERACIÓN: {self.fecha}', font=self.fuente_label)
-        l_fecha.grid(row=6, column=0, sticky="w", padx=5, pady=5, columnspan=2)
+        l_fecha.grid(row=7, column=0, sticky="w", padx=5, pady=5, columnspan=2)
         l_h_inicio = ttk.Label(self.frm_resumen, text=f'HORA DE INICIO: {self.hora_inicio}', font=self.fuente_label)
-        l_h_inicio.grid(row=7, column=0, sticky="w", padx=5, pady=5, columnspan=2)
+        l_h_inicio.grid(row=8, column=0, sticky="w", padx=5, pady=5, columnspan=2)
         l_h_fin = ttk.Label(self.frm_resumen, text=f'HORA DE TERMINO: {self.hora_termino}', font=self.fuente_label)
-        l_h_fin.grid(row=8, column=0, sticky="w", padx=5, pady=5, columnspan=2)
+        l_h_fin.grid(row=9, column=0, sticky="w", padx=5, pady=5, columnspan=2)
         l_conteo = ttk.Label(self.frm_resumen, text=f'PIEZAS CONTADAS: {self.conteo}', font=self.fuente_label)
-        l_conteo.grid(row=9, column=0, sticky="w", padx=5, pady=5, columnspan=2)
+        l_conteo.grid(row=10, column=0, sticky="w", padx=5, pady=5, columnspan=2)
 
         btn_confirmar = Button(self.frm_resumen, text='Confirmar datos', command=lambda:self.subir_datos())
-        btn_confirmar.grid(row=10, column=0, padx=5, pady=5)
+        btn_confirmar.grid(row=11, column=0, padx=5, pady=5)
         btn_confirmar.configure(font=self.fuente_btn, background='green3', foreground='white')
         btn_descartar = Button(self.frm_resumen, text='Descartar datos', command=lambda:self.descartar_datos())
-        btn_descartar.grid(row=10, column=1, padx=5, pady=5)
+        btn_descartar.grid(row=11, column=1, padx=5, pady=5)
         btn_descartar.configure(font=self.fuente_btn, background='red', foreground='white')
     
+    # PRODUCCION
     def subir_datos(self) -> None:
         """
             Función encargada de almacenar los datos recabados de la operación
@@ -534,10 +594,11 @@ class Main():
                 self.hora_termino, 
                 self.fecha, 
                 self.descripcion, 
-                self.id_usuario)
+                self.id_usuario,
+                self.caducidad)
             operacion = ("INSERT INTO monitoreo_del_conteo "
-                 "(nombre, cantidad, hora_inicio, hora_fin, fecha, descripcion, user_id) "
-                 "VALUES (%s, %s, %s, %s, %s, %s, %s)")
+                 "(nombre, cantidad, hora_inicio, hora_fin, fecha, descripcion, user_id, fecha_caducidad) "
+                 "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)")
 
             try:
                 cnx = mysql.connector.connect(
@@ -557,6 +618,45 @@ class Main():
                 cursor.close()
                 cnx.close()
                 self.resetear_datos()
+
+    # PRUEBAS
+    """
+    def subir_datos(self) -> None:
+        respuesta = messagebox.askyesno('Confirmación', '¿Está seguro de subir la información recabada?')
+
+        if respuesta:
+            parametros = (
+                self.rd_elegido.get(), 
+                self.conteo, 
+                self.hora_inicio, 
+                self.hora_termino, 
+                self.fecha, 
+                self.descripcion, 
+                self.id_usuario,
+                self.caducidad)
+            operacion = ("INSERT INTO conteos "
+                 "(nombre, cantidad, hora_inicio, hora_fin, fecha, descripcion, id_usuario, fecha_caducidad) "
+                 "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)")
+
+            try:
+                cnx = mysql.connector.connect(
+                    user='root',
+                    password='root',
+                    host='localhost',
+                    database='tt_prueba1'
+                )
+                cursor = cnx.cursor()
+                cursor.execute(operacion, parametros)
+                cnx.commit()
+                messagebox.showinfo('BD', "Se insertó el registro de conteo.")
+            except mysql.connector.Error as err:
+                messagebox.showerror('BD', "No se insertó el registro de conteo.")
+                print(err)
+            finally:
+                cursor.close()
+                cnx.close()
+                self.resetear_datos()
+    """
 
     def descartar_datos(self) -> None:
         """
